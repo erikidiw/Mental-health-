@@ -61,7 +61,7 @@ def load_scaler(path="scaler.pkl"):
 model, model_err = load_model()
 scaler, scaler_err = load_scaler()
 
-st.title("Mental Health Condition Predictor (Streamlit)")
+st.title("Mental Health Condition Predictor")
 st.write("Aplikasi prediksi berdasarkan model Gradient Boosting yang dilatih. Pastikan `gb_model.pkl` ada di folder yang sama.")
 
 if model_err:
