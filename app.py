@@ -1,119 +1,177 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import pickle
-from sklearn.ensemble import RandomForestClassifier # Import model yang digunakan
+import joblib
 
-# --- 1. Load Model ---
-# Model yang disimpan adalah Random Forest yang dilatih pada 3 fitur.
-try:
-    with open('model.pkl', 'rb') as f:
-        model = pickle.load(f)
-    st.sidebar.success("✅ Model 'model.pkl' berhasil dimuat.")
-except FileNotFoundError:
-    st.sidebar.error("❌ File 'model.pkl' tidak ditemukan. Pastikan file berada di direktori yang sama.")
-    model = None
-except Exception as e:
-    st.sidebar.error(f"❌ Gagal memuat model: {e}")
-    model = None
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from category_encoders.target_encoder import TargetEncoder
+from sklearn.ensemble import RandomForestClassifier
 
 
-# --- 2. Fungsi Prediksi ---
-def predict_risk(model, data):
-    """
-    Melakukan prediksi risiko menggunakan model yang dimuat.
-    Data input harus memiliki 3 kolom: 'Academic Pressure', 'CGPA', 'Study Satisfaction'.
-    """
-    if model is None:
-        return "Model Gagal Dimuat"
+# ==========================
+# 🔧 Load Dataset for Encoding Reference
+# ==========================
+df = pd.read_csv("student_depression_dataset.csv")   # harus ada di folder yang sama
 
-    # Pastikan urutan dan nama kolom sesuai dengan saat pelatihan model
-    features = ['Academic Pressure', 'CGPA', 'Study Satisfaction']
-    input_df = pd.DataFrame([data], columns=features)
 
-    # Prediksi
-    prediction = model.predict(input_df)[0]
-    return prediction
+# ==========================
+# 🔧 PREPROCESSING FUNCTION
+# ==========================
 
-# --- 3. Tampilan Streamlit ---
+# Global encoders (will be fitted during model training)
+label_encoders = {}
+target_encoder = None
+scaler = StandardScaler()
 
-st.set_page_config(
-    page_title="Prediksi Tingkat Risiko Depresi Mahasiswa",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-st.title("🎓 Sistem Prediksi Tingkat Risiko Depresi Mahasiswa")
-st.markdown("Aplikasi ini menggunakan model *Random Forest* untuk memprediksi tingkat risiko (Low, Medium, High) berdasarkan faktor akademis dan kepuasan belajar.")
-
-st.sidebar.header("Input Data Mahasiswa")
-
-# Input pengguna
-academic_pressure = st.sidebar.slider(
-    "1. Tekanan Akademik (0 = Rendah, 5 = Tinggi)",
-    min_value=0, max_value=5, value=3
-)
-
-cgpa = st.sidebar.slider(
-    "2. Rata-rata IPK (CGPA)",
-    min_value=2.0, max_value=10.0, value=7.5, step=0.1
-)
-
-study_satisfaction = st.sidebar.slider(
-    "3. Kepuasan Belajar (0 = Sangat Tidak Puas, 5 = Sangat Puas)",
-    min_value=0, max_value=5, value=4
-)
-
-# Tombol prediksi
-if st.sidebar.button("Prediksi Risiko"):
-    if model is not None:
-        # Kumpulkan input data
-        input_data = {
-            'Academic Pressure': academic_pressure,
-            'CGPA': cgpa,
-            'Study Satisfaction': study_satisfaction
-        }
-
-        # Lakukan prediksi
-        risk_level_code = predict_risk(model, input_data)
-
-        # Interpretasi hasil
-        risk_map = {
-            0: "Rendah (Low Risk)",
-            1: "Sedang (Medium Risk)",
-            2: "Tinggi (High Risk)"
-        }
-
-        color_map = {
-            0: "green",
-            1: "orange",
-            2: "red"
-        }
-
-        risk_level = risk_map.get(risk_level_code, "Tidak Diketahui")
-        color = color_map.get(risk_level_code, "grey")
-
-        st.subheader("Hasil Prediksi")
-        st.write(f"Berdasarkan data yang dimasukkan:")
-
-        # Tampilkan hasil dengan warna
-        st.markdown(
-            f"Tingkat Risiko: <span style='color:{color}; font-size:24px; font-weight:bold;'>{risk_level}</span>",
-            unsafe_allow_html=True
-        )
-
-        st.markdown("---")
-
-        st.subheader("Detail Input")
-        st.json(input_data)
-
-        st.subheader("Rekomendasi Cepat")
-        if risk_level_code == 2:
-            st.warning("⚠️ Risiko Tinggi! Segera cari bantuan profesional. Kurangi beban akademik, tingkatkan kualitas tidur, dan prioritaskan waktu istirahat.")
-        elif risk_level_code == 1:
-            st.info("💡 Risiko Sedang. Perhatikan keseimbangan hidup. Tingkatkan aktivitas sosial dan pastikan pola tidur dan makan teratur.")
-        else:
-            st.success("✅ Risiko Rendah. Pertahankan gaya hidup seimbang. Terus jaga kepuasan belajar dan kelola stres dengan baik.")
-
+def preprocess_dataframe(df_input, fit_encoders=False):
+    """Preprocess entire dataframe for training"""
+    df_copy = df_input.copy()
+    
+    # -------- Drop Columns --------
+    drop_cols = ['Work Pressure', 'Job Satisfaction']
+    if 'id' in df_copy.columns:
+        drop_cols.append('id')
+    if 'Depression' in df_copy.columns:
+        target = df_copy['Depression']
     else:
-        st.error("Model prediksi belum siap.")
+        target = None
+    df_copy = df_copy.drop(columns=[col for col in drop_cols if col in df_copy.columns])
+    
+    # -------- Encoding Rules --------
+    ordinal_mapping = {
+        "Sleep Duration": {
+            "Less than 5 hours": 1,
+            "5-6 hours": 2,
+            "7-8 hours": 3,
+            "More than 8 hours": 4,
+            "Others": 0
+        },
+        "Financial Stress": {
+            "1.0": 1, "2.0": 2, "3.0": 3, "4.0": 4, "5.0": 5, "?": 0
+        },
+        "Have you ever had suicidal thoughts ?": {"No": 0, "Yes": 1},
+        "Family History of Mental Illness": {"No": 0, "Yes": 1}
+    }
+    
+    for col, mapping in ordinal_mapping.items():
+        if col in df_copy.columns:
+            df_copy[col] = df_copy[col].map(mapping).fillna(0)
+    
+    # Label Encoding
+    label_cols = ['Gender', 'Dietary Habits', 'Degree']
+    
+    for col in label_cols:
+        if col in df_copy.columns:
+            df_copy[col] = df_copy[col].astype(str)
+            if fit_encoders:
+                le = LabelEncoder()
+                df_copy[col] = le.fit_transform(df_copy[col])
+                label_encoders[col] = le
+            else:
+                if col in label_encoders:
+                    df_copy[col] = label_encoders[col].transform(df_copy[col])
+    
+    # Target Encoding
+    target_cols = ['City', 'Profession']
+    if fit_encoders and target is not None:
+        global target_encoder
+        target_encoder = TargetEncoder()
+        df_copy[target_cols] = target_encoder.fit_transform(df_copy[target_cols], target)
+    else:
+        if target_encoder is not None:
+            df_copy[target_cols] = target_encoder.transform(df_copy[target_cols])
+    
+    # Ensure Academic Pressure and Study Satisfaction are numeric
+    if "Academic Pressure" in df_copy.columns:
+        df_copy["Academic Pressure"] = pd.to_numeric(df_copy["Academic Pressure"], errors='coerce').fillna(0)
+    if "Study Satisfaction" in df_copy.columns:
+        df_copy["Study Satisfaction"] = pd.to_numeric(df_copy["Study Satisfaction"], errors='coerce').fillna(0)
+    
+    # Scaling
+    feature_cols = df_copy.columns
+    if fit_encoders:
+        df_copy[feature_cols] = scaler.fit_transform(df_copy[feature_cols])
+    else:
+        df_copy[feature_cols] = scaler.transform(df_copy[feature_cols])
+    
+    return df_copy
+
+def preprocess_input(data):
+    """Preprocess single input dictionary for prediction"""
+    # Convert dict to single-row dataframe
+    df_single = pd.DataFrame([data])
+    
+    # Use the dataframe preprocessing function
+    result = preprocess_dataframe(df_single, fit_encoders=False)
+    
+    return result
+
+
+
+# ==========================
+# 🚀 Load Model
+# ==========================
+# Prepare training data
+train_df = df.drop(columns=["Depression"])
+
+# Preprocess training data and fit encoders
+X_train = preprocess_dataframe(train_df, fit_encoders=True)
+y_train = df["Depression"]
+
+model = RandomForestClassifier()
+model.fit(X_train, y_train)
+
+
+# ==========================
+# 🧠 STREAMLIT UI
+# ==========================
+
+st.title("🩺 Mental Health Depression Prediction App")
+st.write("Masukkan data kamu lalu klik predict untuk melihat hasilnya.")
+
+
+# Input Form
+gender = st.selectbox("Gender", df["Gender"].unique())
+city = st.selectbox("City", df["City"].unique())
+profession = st.selectbox("Profession", df["Profession"].unique())
+age = st.number_input("Age", min_value=10, max_value=80, step=1)
+cgpa = st.number_input("CGPA", min_value=2.0, max_value=10.0, step=0.1)
+hours = st.number_input("Work/Study Hours", min_value=0, max_value=20, step=1)
+sleep = st.selectbox("Sleep Duration", df["Sleep Duration"].unique())
+financial = st.selectbox("Financial Stress (1-5)", ["1.0", "2.0", "3.0", "4.0", "5.0"])
+diet = st.selectbox("Dietary Habits", df["Dietary Habits"].unique())
+degree = st.selectbox("Degree", df["Degree"].unique())
+social = st.selectbox("Social Weakness", df["Social Weakness"].unique())
+suicide = st.selectbox("Have suicidal thoughts?", ["Yes", "No"])
+history = st.selectbox("Family History of Mental Illness", ["Yes", "No"])
+academic = st.number_input("Academic Pressure (0-5)", min_value=0.0, max_value=5.0, step=0.1)
+satisfaction = st.number_input("Study Satisfaction (0-5)", min_value=0.0, max_value=5.0, step=0.1)
+
+
+if st.button("🔍 Predict"):
+
+    input_data = {
+        "Gender": gender,
+        "City": city,
+        "Profession": profession,
+        "Age": age,
+        "CGPA": cgpa,
+        "Work/Study Hours": hours,
+        "Sleep Duration": sleep,
+        "Dietary Habits": diet,
+        "Degree": degree,
+        "Social Weakness": social,
+        "Have you ever had suicidal thoughts ?": suicide,
+        "Financial Stress": financial,
+        "Family History of Mental Illness": history,
+        "Academic Pressure": academic,
+        "Study Satisfaction": satisfaction
+    }
+
+    processed = preprocess_input(input_data)
+    prediction = model.predict(processed)[0]
+
+    if prediction == 1:
+        st.error("⚠️ Kamu menunjukkan indikasi depresi. Sebaiknya konsultasi dengan profesional.")
+    else:
+        st.success("💚 Kamu tidak menunjukkan tanda depresi. Tetap jaga kesehatan mental ya!")
