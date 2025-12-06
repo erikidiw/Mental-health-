@@ -1,155 +1,177 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import pickle
-import os
+import joblib
 
-# -----------------------
-# Helpers / Preproc config
-# -----------------------
-TARGET_MAP = {
-    0: "Anxiety",
-    1: "Bipolar",
-    2: "Depression",
-    3: "PTSD"
-}
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from category_encoders.target_encoder import TargetEncoder
+from sklearn.ensemble import RandomForestClassifier
 
-COUNTRY_OPTIONS = ["USA", "Other"]
-GENDER_OPTIONS = ["Female", "Male", "Other"]
-EXERCISE_OPTIONS = ["Low", "Moderate", "High"]
-DIET_OPTIONS = ["Junk Food", "Balanced", "Vegetarian", "Other"]
-STRESS_OPTIONS = ["Low", "Moderate", "High"]
 
-NUM_COLS = [
-    "Age",
-    "Sleep Hours",
-    "Work Hours per Week",
-    "Screen Time per Day (Hours)",
-    "Social Interaction Score",
-    "Happiness Score"
-]
+# ==========================
+# 🔧 Load Dataset for Encoding Reference
+# ==========================
+df = pd.read_csv("student_depression_dataset.csv")   # harus ada di folder yang sama
 
-CATEGORICAL_COLS = [
-    "Country",
-    "Gender",
-    "Exercise Level",
-    "Diet Type",
-    "Stress Level"
-]
 
-# -----------------------
-# Load Model
-# -----------------------
-@st.cache_resource
-def load_model(model_path="gb_model.pkl"):
-    if os.path.exists(model_path):
-        with open(model_path, "rb") as f:
-            return pickle.load(f)
-    return None
+# ==========================
+# 🔧 PREPROCESSING FUNCTION
+# ==========================
 
-model = load_model()
+# Global encoders (will be fitted during model training)
+label_encoders = {}
+target_encoder = None
+scaler = StandardScaler()
 
-st.title("Mental Health Condition Predictor")
-if model is None:
-    st.error("Model `gb_model.pkl` tidak ditemukan. Pastikan file ada di folder yang sama.")
-    st.stop()
-else:
-    st.success("Model berhasil dimuat ✔")
+def preprocess_dataframe(df_input, fit_encoders=False):
+    """Preprocess entire dataframe for training"""
+    df_copy = df_input.copy()
+    
+    # -------- Drop Columns --------
+    drop_cols = ['Work Pressure', 'Job Satisfaction']
+    if 'id' in df_copy.columns:
+        drop_cols.append('id')
+    if 'Depression' in df_copy.columns:
+        target = df_copy['Depression']
+    else:
+        target = None
+    df_copy = df_copy.drop(columns=[col for col in drop_cols if col in df_copy.columns])
+    
+    # -------- Encoding Rules --------
+    ordinal_mapping = {
+        "Sleep Duration": {
+            "Less than 5 hours": 1,
+            "5-6 hours": 2,
+            "7-8 hours": 3,
+            "More than 8 hours": 4,
+            "Others": 0
+        },
+        "Financial Stress": {
+            "1.0": 1, "2.0": 2, "3.0": 3, "4.0": 4, "5.0": 5, "?": 0
+        },
+        "Have you ever had suicidal thoughts ?": {"No": 0, "Yes": 1},
+        "Family History of Mental Illness": {"No": 0, "Yes": 1}
+    }
+    
+    for col, mapping in ordinal_mapping.items():
+        if col in df_copy.columns:
+            df_copy[col] = df_copy[col].map(mapping).fillna(0)
+    
+    # Label Encoding
+    label_cols = ['Gender', 'Dietary Habits', 'Degree']
+    
+    for col in label_cols:
+        if col in df_copy.columns:
+            df_copy[col] = df_copy[col].astype(str)
+            if fit_encoders:
+                le = LabelEncoder()
+                df_copy[col] = le.fit_transform(df_copy[col])
+                label_encoders[col] = le
+            else:
+                if col in label_encoders:
+                    df_copy[col] = label_encoders[col].transform(df_copy[col])
+    
+    # Target Encoding
+    target_cols = ['City', 'Profession']
+    if fit_encoders and target is not None:
+        global target_encoder
+        target_encoder = TargetEncoder()
+        df_copy[target_cols] = target_encoder.fit_transform(df_copy[target_cols], target)
+    else:
+        if target_encoder is not None:
+            df_copy[target_cols] = target_encoder.transform(df_copy[target_cols])
+    
+    # Ensure Academic Pressure and Study Satisfaction are numeric
+    if "Academic Pressure" in df_copy.columns:
+        df_copy["Academic Pressure"] = pd.to_numeric(df_copy["Academic Pressure"], errors='coerce').fillna(0)
+    if "Study Satisfaction" in df_copy.columns:
+        df_copy["Study Satisfaction"] = pd.to_numeric(df_copy["Study Satisfaction"], errors='coerce').fillna(0)
+    
+    # Scaling
+    feature_cols = df_copy.columns
+    if fit_encoders:
+        df_copy[feature_cols] = scaler.fit_transform(df_copy[feature_cols])
+    else:
+        df_copy[feature_cols] = scaler.transform(df_copy[feature_cols])
+    
+    return df_copy
 
-# -----------------------
-# Load Scaler
-# -----------------------
-@st.cache_resource
-def load_scaler(scaler_path="scaler.pkl"):
-    if os.path.exists(scaler_path):
-        with open(scaler_path, "rb") as f:
-            return pickle.load(f)
-    return None
+def preprocess_input(data):
+    """Preprocess single input dictionary for prediction"""
+    # Convert dict to single-row dataframe
+    df_single = pd.DataFrame([data])
+    
+    # Use the dataframe preprocessing function
+    result = preprocess_dataframe(df_single, fit_encoders=False)
+    
+    return result
 
-scaler = load_scaler()
 
-if scaler is None:
-    st.warning("Scaler tidak ditemukan. Silakan upload `scaler.pkl` jika diperlukan:")
 
-    scaler_file = st.file_uploader("🔼 Upload scaler.pkl", type=["pkl"])
-    if scaler_file is not None:
-        try:
-            scaler = pickle.load(scaler_file)
-            st.success("Scaler berhasil dimuat dari upload ✔")
-        except:
-            st.error("Gagal membaca scaler.pkl. Pastikan file benar!")
+# ==========================
+# 🚀 Load Model
+# ==========================
+# Prepare training data
+train_df = df.drop(columns=["Depression"])
 
-st.markdown("---")
-st.header("Masukkan Data Pasien")
+# Preprocess training data and fit encoders
+X_train = preprocess_dataframe(train_df, fit_encoders=True)
+y_train = df["Depression"]
 
-# -----------------------
-# INPUT FORM
-# -----------------------
-col1, col2 = st.columns(2)
-with col1:
-    age = st.number_input("Age", min_value=10, max_value=120, value=30)
-    sleep = st.number_input("Sleep Hours", min_value=0.0, max_value=24.0, value=7.0, step=0.5)
-    work_hours = st.number_input("Work Hours per Week", min_value=0.0, max_value=168.0, value=40.0)
+model = RandomForestClassifier()
+model.fit(X_train, y_train)
 
-with col2:
-    screen_time = st.number_input("Screen Time per Day (Hours)", min_value=0.0, max_value=24.0, value=3.0, step=0.5)
-    social_interaction = st.slider("Social Interaction Score (0-10)", 0.0, 10.0, 5.0)
-    happiness = st.slider("Happiness Score (0-10)", 0.0, 10.0, 5.0)
 
-country = st.selectbox("Country", COUNTRY_OPTIONS)
-gender = st.selectbox("Gender", GENDER_OPTIONS)
-exercise = st.selectbox("Exercise Level", EXERCISE_OPTIONS)
-diet = st.selectbox("Diet Type", DIET_OPTIONS)
-stress = st.selectbox("Stress Level", STRESS_OPTIONS)
+# ==========================
+# 🧠 STREAMLIT UI
+# ==========================
 
-# -----------------------
-# PREDICTION BUTTON
-# -----------------------
-if st.button("Predict"):
-    X = pd.DataFrame([{
-        "Age": age,
-        "Sleep Hours": sleep,
-        "Work Hours per Week": work_hours,
-        "Screen Time per Day (Hours)": screen_time,
-        "Social Interaction Score": social_interaction,
-        "Happiness Score": happiness,
-        "Country": country,
+st.title("🩺 Mental Health Depression Prediction App")
+st.write("Masukkan data kamu lalu klik predict untuk melihat hasilnya.")
+
+
+# Input Form
+gender = st.selectbox("Gender", df["Gender"].unique())
+city = st.selectbox("City", df["City"].unique())
+profession = st.selectbox("Profession", df["Profession"].unique())
+age = st.number_input("Age", min_value=10, max_value=80, step=1)
+cgpa = st.number_input("CGPA", min_value=2.0, max_value=10.0, step=0.1)
+hours = st.number_input("Work/Study Hours", min_value=0, max_value=20, step=1)
+sleep = st.selectbox("Sleep Duration", df["Sleep Duration"].unique())
+financial = st.selectbox("Financial Stress (1-5)", ["1.0", "2.0", "3.0", "4.0", "5.0"])
+diet = st.selectbox("Dietary Habits", df["Dietary Habits"].unique())
+degree = st.selectbox("Degree", df["Degree"].unique())
+social = st.selectbox("Social Weakness", df["Social Weakness"].unique())
+suicide = st.selectbox("Have suicidal thoughts?", ["Yes", "No"])
+history = st.selectbox("Family History of Mental Illness", ["Yes", "No"])
+academic = st.number_input("Academic Pressure (0-5)", min_value=0.0, max_value=5.0, step=0.1)
+satisfaction = st.number_input("Study Satisfaction (0-5)", min_value=0.0, max_value=5.0, step=0.1)
+
+
+if st.button("🔍 Predict"):
+
+    input_data = {
         "Gender": gender,
-        "Exercise Level": exercise,
-        "Diet Type": diet,
-        "Stress Level": stress
-    }])
+        "City": city,
+        "Profession": profession,
+        "Age": age,
+        "CGPA": cgpa,
+        "Work/Study Hours": hours,
+        "Sleep Duration": sleep,
+        "Dietary Habits": diet,
+        "Degree": degree,
+        "Social Weakness": social,
+        "Have you ever had suicidal thoughts ?": suicide,
+        "Financial Stress": financial,
+        "Family History of Mental Illness": history,
+        "Academic Pressure": academic,
+        "Study Satisfaction": satisfaction
+    }
 
-    # Preprocessing
-    X["Sleep Hours"] = X["Sleep Hours"].clip(2, 10)
-    X["lifestyle_risk_score"] = (10 - X["Sleep Hours"]) + (X["Work Hours per Week"] / 10) + \
-                                (X["Screen Time per Day (Hours)"]) + (10 - X["Social Interaction Score"])
-    X["work_life_ratio"] = X["Work Hours per Week"] / X["Sleep Hours"].replace(0, 1e-6)
-    X["social_wellbeing"] = (X["Social Interaction Score"] + X["Happiness Score"]) / 2
+    processed = preprocess_input(input_data)
+    prediction = model.predict(processed)[0]
 
-    X_dummies = pd.get_dummies(X[CATEGORICAL_COLS], drop_first=True)
-    X_num = X[NUM_COLS + ["lifestyle_risk_score", "work_life_ratio", "social_wellbeing"]]
-    X_proc = pd.concat([X_num, X_dummies], axis=1)
-
-    if hasattr(model, "feature_names_in_"):
-        for col in model.feature_names_in_:
-            if col not in X_proc.columns:
-                X_proc[col] = 0
-        X_proc = X_proc[model.feature_names_in_]
-
-    # Apply scaler if exists
-    if scaler is not None:
-        try:
-            X_proc[X_proc.columns] = scaler.transform(X_proc[X_proc.columns])
-        except:
-            st.warning("Scaler tidak cocok. Prediksi tanpa scaling.")
-
-    try:
-        pred = model.predict(X_proc)[0]
-        label = TARGET_MAP.get(pred, "Unknown")
-
-        st.subheader("🎯 Hasil Prediksi")
-        st.success(f"Prediksi Kondisi Mental: **{label}**")
-
-    except Exception as e:
-        st.error(f"Terjadi error saat prediksi: {e}")
+    if prediction == 1:
+        st.error("⚠️ Kamu menunjukkan indikasi depresi. Sebaiknya konsultasi dengan profesional.")
+    else:
+        st.success("💚 Kamu tidak menunjukkan tanda depresi. Tetap jaga kesehatan mental ya!")
