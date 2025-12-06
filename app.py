@@ -28,9 +28,9 @@ def preprocess_data(data):
     """
     Preprocessing data sesuai dengan requirements:
     - ID dihapus (tidak ada di input)
-    - Academic Pressure: scale 0-5
+    - Academic Pressure: scale 0-5 (angka bulat)
     - CGPA: min-max 2-10 (bisa desimal)
-    - Study Satisfaction: scale 0-5
+    - Study Satisfaction: scale 0-5 (angka bulat)
     """
     # Pastikan data dalam format DataFrame
     if isinstance(data, dict):
@@ -49,17 +49,17 @@ def preprocess_data(data):
         st.error(f"Kolom yang hilang: {', '.join(missing_columns)}")
         return None
     
-    # Normalisasi Academic Pressure (0-5)
+    # Normalisasi Academic Pressure (0-5) - integer
     if 'Academic Pressure' in df.columns:
-        df['Academic Pressure'] = df['Academic Pressure'].clip(0, 5)
+        df['Academic Pressure'] = df['Academic Pressure'].clip(0, 5).astype(int)
     
-    # Normalisasi CGPA (2-10)
+    # Normalisasi CGPA (2-10) - bisa desimal
     if 'CGPA' in df.columns:
         df['CGPA'] = df['CGPA'].clip(2.0, 10.0)
     
-    # Normalisasi Study Satisfaction (0-5)
+    # Normalisasi Study Satisfaction (0-5) - integer
     if 'Study Satisfaction' in df.columns:
-        df['Study Satisfaction'] = df['Study Satisfaction'].clip(0, 5)
+        df['Study Satisfaction'] = df['Study Satisfaction'].clip(0, 5).astype(int)
     
     # Pastikan urutan kolom sesuai dengan yang diharapkan model
     df_processed = df[required_columns].copy()
@@ -115,9 +115,9 @@ st.info("""
 3. Klik tombol "Prediksi" untuk mendapatkan hasil prediksi
 
 **Aturan Input:**
-- **Academic Pressure**: Skala 0-5
+- **Academic Pressure**: Skala 0-5 (angka bulat)
 - **CGPA**: Nilai antara 2.0 - 10.0 (bisa desimal)
-- **Study Satisfaction**: Skala 0-5
+- **Study Satisfaction**: Skala 0-5 (angka bulat)
 """)
 
 # Form input
@@ -128,10 +128,10 @@ col1, col2 = st.columns(2)
 with col1:
     academic_pressure = st.slider(
         "Academic Pressure",
-        min_value=0.0,
-        max_value=5.0,
-        value=2.5,
-        step=0.1,
+        min_value=0,
+        max_value=5,
+        value=2,
+        step=1,
         help="Tingkat tekanan akademik (0 = sangat rendah, 5 = sangat tinggi)"
     )
     
@@ -147,15 +147,15 @@ with col1:
 with col2:
     study_satisfaction = st.slider(
         "Study Satisfaction",
-        min_value=0.0,
-        max_value=5.0,
-        value=3.0,
-        step=0.1,
+        min_value=0,
+        max_value=5,
+        value=3,
+        step=1,
         help="Tingkat kepuasan belajar (0 = sangat tidak puas, 5 = sangat puas)"
     )
 
 # Tampilkan ringkasan input
-st.subheader(" Ringkasan Input")
+st.subheader("📋 Ringkasan Input")
 input_summary = pd.DataFrame({
     'Fitur': ['Academic Pressure', 'CGPA', 'Study Satisfaction'],
     'Nilai': [academic_pressure, cgpa, study_satisfaction]
@@ -164,12 +164,12 @@ st.dataframe(input_summary, use_container_width=True, hide_index=True)
 
 # Tombol prediksi
 st.markdown("---")
-predict_button = st.button(" Prediksi", type="primary", use_container_width=True)
+predict_button = st.button("🔮 Prediksi", type="primary", use_container_width=True)
 
 # Proses prediksi
 if predict_button:
     if model is None:
-        st.error(" Model belum dimuat! Silakan upload model terlebih dahulu.")
+        st.error("❌ Model belum dimuat! Silakan upload model terlebih dahulu.")
     else:
         # Siapkan data input
         input_data = {
@@ -179,7 +179,7 @@ if predict_button:
         }
         
         # Preprocessing
-        with st.spinner(" Memproses data..."):
+        with st.spinner("🔄 Memproses data..."):
             processed_data = preprocess_data(input_data)
         
         if processed_data is not None:
@@ -197,11 +197,11 @@ if predict_button:
                         )
                 
                 # Tampilkan hasil
-                st.success(" Prediksi berhasil!")
+                st.success("✅ Prediksi berhasil!")
                 st.markdown("---")
                 
                 # Hasil prediksi utama
-                st.subheader(" Hasil Prediksi")
+                st.subheader("🎯 Hasil Prediksi")
                 
                 # Format hasil berdasarkan tipe prediksi
                 if isinstance(prediction[0], (int, np.integer)):
@@ -213,16 +213,16 @@ if predict_button:
                 
                 # Tampilkan probabilitas jika ada
                 if hasattr(model, 'predict_proba'):
-                    st.subheader(" Probabilitas Prediksi")
+                    st.subheader("📊 Probabilitas Prediksi")
                     st.bar_chart(prob_df.T)
                     st.dataframe(prob_df, use_container_width=True)
                 
                 # Tampilkan data yang diproses
-                with st.expander(" Lihat Data yang Diproses"):
+                with st.expander("🔍 Lihat Data yang Diproses"):
                     st.dataframe(processed_data, use_container_width=True)
                 
             except Exception as e:
-                st.error(f" Error saat prediksi: {str(e)}")
+                st.error(f"❌ Error saat prediksi: {str(e)}")
                 st.exception(e)
 
 # Footer
