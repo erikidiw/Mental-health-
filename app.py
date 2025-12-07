@@ -21,6 +21,7 @@ class CustomOrdinalMapper:
 # 🚀 Load Artifacts (Pipeline, Encoders, etc.)
 # ==========================
 try:
+    # Memuat semua objek yang diperlukan dari file .pkl
     artifacts = joblib.load('pipeline_artifacts.pkl')
     pipeline = artifacts['pipeline']
     label_encoders = artifacts['label_encoders']
@@ -30,10 +31,10 @@ try:
     # Memuat opsi unik
     UNIQUE_OPTS = artifacts['unique_options']
     
-    st.success("✅ Model dan Preprocessor berhasil dimuat.")
+    st.success("Model dan Preprocessor berhasil dimuat.")
     
 except Exception as e:
-    st.error(f"❌ Gagal memuat artifacts. Pastikan 'pipeline_artifacts.pkl' sudah dibuat ulang dengan opsi unik: {e}")
+    st.error(f"Gagal memuat artifacts. Pastikan 'pipeline_artifacts.pkl' sudah dibuat ulang tanpa Social Weakness: {e}")
     st.stop()
 
 
@@ -81,22 +82,22 @@ def preprocess_and_predict(input_data):
 # 🧠 STREAMLIT UI
 # ==========================
 
-st.title("🩺 Sistem Prediksi Risiko Depresi Mahasiswa")
+st.title("Sistem Prediksi Risiko Depresi Mahasiswa")
 st.write("Masukkan data kamu. Lalu tekan tombol prediksi di bawah.")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
     st.subheader("Informasi Dasar")
-    # --- PERUBAHAN DI SINI: MENGGUNAKAN SELECTBOX DENGAN OPSI DINAMIS ---
+    # Opsi dinamis
     gender = st.selectbox("Jenis Kelamin", UNIQUE_OPTS['Gender'])
-    city = st.selectbox("Kota Tinggal", UNIQUE_OPTS['City']) # Diambil dari PKL
-    profession = st.selectbox("Pekerjaan", UNIQUE_OPTS['Profession']) # Diambil dari PKL
+    city = st.selectbox("Kota Tinggal", UNIQUE_OPTS['City'])
+    profession = st.selectbox("Pekerjaan", UNIQUE_OPTS['Profession'])
     age = st.number_input("Umur", min_value=10, max_value=80, value=25, step=1)
     degree = st.selectbox("Jenjang Pendidikan (Degree)", UNIQUE_OPTS['Degree'])
     
 with col2:
-    st.subheader("Faktor Akademik & Kehidupan")
+    st.subheader("Faktor Akademik dan Kehidupan")
     cgpa = st.number_input("Rata-rata IPK (CGPA)", min_value=2.0, max_value=10.0, value=7.5, step=0.1)
     hours = st.number_input("Jam Belajar/Kerja per hari", min_value=0, max_value=20, value=5, step=1)
     sleep = st.selectbox("Durasi Tidur", UNIQUE_OPTS['Sleep Duration'])
@@ -104,18 +105,22 @@ with col2:
     
 with col3:
     st.subheader("Faktor Risiko Mental")
+    # Sliders Integer 1-5
     academic = st.slider("Tekanan Akademik (1=Rendah, 5=Tinggi)", min_value=1, max_value=5, value=3, step=1)
     satisfaction = st.slider("Kepuasan Belajar (1=Rendah, 5=Tinggi)", min_value=1, max_value=5, value=4, step=1)
     financial = st.slider("Stres Keuangan (1=Rendah, 5=Tinggi)", min_value=1, max_value=5, value=3, step=1)
-    social = st.selectbox("Kelemahan Sosial (Social Weakness)", UNIQUE_OPTS['Social Weakness'])
+    
+    # Social Weakness Dihilangkan
+    
     history = st.selectbox("Riwayat Mental Keluarga", UNIQUE_OPTS['Family History'])
     suicide = st.selectbox("Pernah terpikir Bunuh Diri?", UNIQUE_OPTS['Suicidal Thoughts'])
 
 
 # Tombol Prediksi
 st.markdown("---")
-if st.button("🔍 Prediksi Tingkat Risiko"):
+if st.button("Prediksi Tingkat Risiko"):
     
+    # Kumpulkan input data (Social Weakness sudah tidak ada)
     input_data = {
         "Gender": gender,
         "City": city,
@@ -126,7 +131,6 @@ if st.button("🔍 Prediksi Tingkat Risiko"):
         "Sleep Duration": sleep,
         "Dietary Habits": diet,
         "Degree": degree,
-        "Social Weakness": social,
         "Have you ever had suicidal thoughts ?": suicide,
         "Financial Stress": str(financial) + ".0",
         "Family History of Mental Illness": history,
@@ -137,9 +141,9 @@ if st.button("🔍 Prediksi Tingkat Risiko"):
     prediction = preprocess_and_predict(input_data)
 
     st.subheader("Hasil Prediksi")
+    
+    # Notifikasi Disederhanakan (tanpa pengulangan teks dan tanpa emoji)
     if prediction == 1:
-        st.error("⚠️ Risiko Tinggi (Depresi). Segera cari bantuan profesional.")
-        st.write("Tingkat Risiko: DEPRESI (1)")
+        st.error("Risiko Tinggi (DEPRESI). Segera cari bantuan profesional.")
     else:
-        st.success("💚 Risiko Rendah (Normal). Pertahankan pola hidup seimbang.")
-        st.write("Tingkat Risiko: TIDAK DEPRESI (0)")
+        st.success("Risiko Rendah (NORMAL). Pertahankan pola hidup seimbang.")
