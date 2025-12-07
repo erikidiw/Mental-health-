@@ -4,6 +4,22 @@ import numpy as np
 import joblib
 
 # ==========================
+# 🔧 Custom Preprocessing Classes (Wajib ada untuk memuat PKL)
+# ==========================
+class CustomOrdinalMapper:
+    def __init__(self, mappings):
+        # Mappings tidak digunakan saat transform di app.py, tapi diperlukan untuk joblib.load
+        self.mappings = {col: map_dict for col, map_dict in mappings}
+        self.cols = [col for col, _ in mappings]
+        
+    def fit(self, X, y=None):
+        return self
+        
+    def transform(self, X):
+        # Fungsi ini akan digantikan oleh transform asli dari objek yang dimuat
+        pass
+
+# ==========================
 # 🚀 Load Artifacts (Pipeline, Encoders, etc.)
 # ==========================
 try:
