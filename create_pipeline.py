@@ -4,8 +4,6 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from category_encoders.target_encoder import TargetEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-import numpy as np
 import sys
 
 # ==========================
@@ -25,10 +23,9 @@ except Exception as e:
 # 🔧 Custom Preprocessing Classes
 # ==========================
 
-# 1. Custom Mapper untuk Ordinal Mapping
+# Custom Mapper untuk Ordinal Mapping (untuk disimpan sebagai artifact)
 class CustomOrdinalMapper:
     def __init__(self, mappings):
-        # Mappings: List of tuples (col_name, {map_dict})
         self.mappings = {col: map_dict for col, map_dict in mappings}
         self.cols = [col for col, _ in mappings]
         
@@ -39,24 +36,19 @@ class CustomOrdinalMapper:
         X_copy = X.copy()
         for col, mapping in self.mappings.items():
             if col in X_copy.columns:
-                # Map, fillna 0, dan pastikan float
-                # Ini juga mengatasi '?' yang sudah diganti '0' di langkah cleaning
                 X_copy[col] = X_copy[col].map(mapping).fillna(0).astype(float)
-        # Hanya kembalikan kolom yang dipetakan
         return X_copy[self.cols]
 
 # ==========================
 # 🔧 Preprocessing Definitions
 # ==========================
 
-# 1. Cleaning function (Menghilangkan quotes/spasi dan mengganti '?' di Financial Stress)
 def clean_data(df):
     df_copy = df.copy()
     for col in ['Sleep Duration', 'Financial Stress']:
         if col in df_copy.columns:
             df_copy[col] = df_copy[col].astype(str).str.replace("'", "").str.strip()
             
-    # Mengganti '?' di Financial Stress dengan '0' (berdasarkan skrip asli Anda)
     if 'Financial Stress' in df_copy.columns:
         df_copy['Financial Stress'] = df_copy['Financial Stress'].replace('?', '0')
     
@@ -84,8 +76,6 @@ label_cols = ['Gender', 'Dietary Habits', 'Degree', 'Social Weakness']
 target_cols = ['City', 'Profession']
 ordinal_cols_names = [col for col, _ in ordinal_mapping]
 
-# Kolom numerik yang tersisa
-numerical_cols = [col for col in X.columns if col not in ordinal_cols_names + label_cols + target_cols]
 
 # ==========================
 # 🚀 Training All Artifacts
@@ -101,7 +91,6 @@ X_processed[ordinal_cols_names] = custom_mapper.fit_transform(X_processed)
 le_encoders = {}
 for col in label_cols:
     le = LabelEncoder()
-    # Pastikan data dikonversi ke string sebelum fit
     X_processed[col] = le.fit_transform(X_processed[col].astype(str))
     le_encoders[col] = le
 
