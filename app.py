@@ -42,7 +42,10 @@ except Exception as e:
 # ==========================
 
 def preprocess_and_predict(input_data):
-    # ... (fungsi preprocess_and_predict tidak berubah) ...
+    """
+    Mengubah input mentah menjadi data yang siap diprediksi 
+    menggunakan encoder yang sudah dilatih, lalu melakukan prediksi.
+    """
     df_single = pd.DataFrame([input_data])
     df_single = df_single[feature_cols]
 
@@ -85,10 +88,10 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     st.subheader("Informasi Dasar")
-    # --- Pilihan dari Dataset ---
+    # --- PERUBAHAN DI SINI: MENGGUNAKAN SELECTBOX DENGAN OPSI DINAMIS ---
     gender = st.selectbox("Jenis Kelamin", UNIQUE_OPTS['Gender'])
-    city = st.selectbox("Kota Tinggal", UNIQUE_OPTS['City'])
-    profession = st.selectbox("Pekerjaan", UNIQUE_OPTS['Profession'])
+    city = st.selectbox("Kota Tinggal", UNIQUE_OPTS['City']) # Diambil dari PKL
+    profession = st.selectbox("Pekerjaan", UNIQUE_OPTS['Profession']) # Diambil dari PKL
     age = st.number_input("Umur", min_value=10, max_value=80, value=25, step=1)
     degree = st.selectbox("Jenjang Pendidikan (Degree)", UNIQUE_OPTS['Degree'])
     
