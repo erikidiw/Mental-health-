@@ -8,7 +8,6 @@ import joblib
 # ==========================
 class CustomOrdinalMapper:
     def __init__(self, mappings):
-        # Mappings tidak digunakan saat transform di app.py, tapi diperlukan untuk joblib.load
         self.mappings = {col: map_dict for col, map_dict in mappings}
         self.cols = [col for col, _ in mappings]
         
@@ -31,13 +30,13 @@ try:
     ordinal_mapper = artifacts['ordinal_mapper']
     feature_cols = artifacts['feature_cols']
     
-    st.sidebar.success("✅ Model dan Preprocessor berhasil dimuat.")
+    st.success("✅ Model dan Preprocessor berhasil dimuat.")
     
 except FileNotFoundError:
-    st.sidebar.error("❌ File 'pipeline_artifacts.pkl' tidak ditemukan. Jalankan skrip 'create_pipeline.py' terlebih dahulu.")
+    st.error("❌ File 'pipeline_artifacts.pkl' tidak ditemukan. Jalankan skrip 'create_pipeline.py' terlebih dahulu.")
     st.stop()
 except Exception as e:
-    st.sidebar.error(f"❌ Gagal memuat artifacts: {e}")
+    st.error(f"❌ Gagal memuat artifacts: {e}")
     st.stop()
 
 
@@ -50,37 +49,33 @@ def preprocess_and_predict(input_data):
     Mengubah input mentah menjadi data yang siap diprediksi 
     menggunakan encoder yang sudah dilatih, lalu melakukan prediksi.
     """
-    # 1. Konversi dictionary ke DataFrame
     df_single = pd.DataFrame([input_data])
-    
-    # 2. Pastikan urutan dan nama kolom sesuai dengan saat training
     df_single = df_single[feature_cols]
 
-    # 3. Cleaning (meniru langkah awal training)
+    # Cleaning
     for col in ['Sleep Duration', 'Financial Stress']:
         if col in df_single.columns:
             df_single[col] = df_single[col].astype(str).str.replace("'", "").str.strip()
             
     df_single['Financial Stress'] = df_single['Financial Stress'].replace('?', '0')
 
-    # 4. Ordinal Mapping (menggunakan mapper yang sudah dilatih)
+    # Ordinal Mapping
     df_single[ordinal_mapper.cols] = ordinal_mapper.transform(df_single)
     
-    # 5. Label Encoding (menggunakan encoder yang sudah dilatih)
+    # Label Encoding
     for col, le in label_encoders.items():
         if col in df_single.columns:
             df_single[col] = df_single[col].astype(str)
-            # Menangani kategori yang tidak pernah dilihat (unseen categories)
             df_single[col] = df_single[col].apply(lambda x: le.transform([x])[0] if x in le.classes_ else -1)
     
-    # 6. Target Encoding (menggunakan encoder yang sudah dilatih)
+    # Target Encoding
     target_cols = ['City', 'Profession']
     df_single[target_cols] = target_encoder.transform(df_single[target_cols])
     
-    # 7. Konversi semua kolom yang tersisa menjadi float
+    # Konversi ke float
     df_processed = df_single.apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
     
-    # 8. Prediksi melalui Pipeline (akan melakukan Scaling + Classification)
+    # Prediksi melalui Pipeline
     prediction = pipeline.predict(df_processed)[0]
     return prediction
 
@@ -89,36 +84,42 @@ def preprocess_and_predict(input_data):
 # 🧠 STREAMLIT UI
 # ==========================
 
-st.title("🩺 Mental Health Depression Prediction App")
-st.write("Masukkan data Anda lalu klik prediksi untuk melihat hasilnya.")
+st.title("🩺 Sistem Prediksi Risiko Depresi Mahasiswa")
+st.write("Masukkan data kamu. Lalu tekan tombol prediksi di bawah.")
 
-# Karena kita tidak memiliki akses ke data asli di sini, kita tentukan opsi secara manual 
-# sesuai dengan file dataset2.py Anda
-df_placeholder = pd.DataFrame(columns=feature_cols)
+# Menggunakan kolom untuk tata letak yang lebih baik
+col1, col2, col3 = st.columns(3)
 
-st.sidebar.header("Input Data Mahasiswa")
-
-# Input Form
-gender = st.sidebar.selectbox("Gender", ['Male', 'Female', 'Others'])
-city = st.sidebar.text_input("City (Contoh: Mumbai)")
-profession = st.sidebar.text_input("Profession (Contoh: Student)")
-age = st.sidebar.number_input("Age", min_value=10, max_value=80, value=25, step=1)
-cgpa = st.sidebar.number_input("CGPA", min_value=2.0, max_value=10.0, value=7.5, step=0.1)
-hours = st.sidebar.number_input("Work/Study Hours", min_value=0, max_value=20, value=5, step=1)
-sleep = st.sidebar.selectbox("Sleep Duration", ['Less than 5 hours', '5-6 hours', '7-8 hours', 'More than 8 hours', 'Others'])
-diet = st.sidebar.selectbox("Dietary Habits", ['Healthy', 'Moderate', 'Unhealthy'])
-degree = st.sidebar.selectbox("Degree", ['B.Pharm', 'BSc', 'BA', 'BCA', 'M.Tech', 'Others'])
-social = st.sidebar.selectbox("Social Weakness", ['No', 'Yes'])
-suicide = st.sidebar.selectbox("Have suicidal thoughts?", ["No", "Yes"])
-financial = st.sidebar.selectbox("Financial Stress (1-5)", ["1.0", "2.0", "3.0", "4.0", "5.0", '?'])
-history = st.sidebar.selectbox("Family History of Mental Illness", ["No", "Yes"])
-academic = st.sidebar.number_input("Academic Pressure (0-5)", min_value=0.0, max_value=5.0, value=3.0, step=0.1)
-satisfaction = st.sidebar.number_input("Study Satisfaction (0-5)", min_value=0.0, max_value=5.0, value=4.0, step=0.1)
-
-
-if st.sidebar.button("🔍 Predict"):
+with col1:
+    st.subheader("Informasi Dasar")
+    gender = st.selectbox("Jenis Kelamin", ['Male', 'Female', 'Others'])
+    age = st.number_input("Umur", min_value=10, max_value=80, value=25, step=1)
+    degree = st.selectbox("Jenjang Pendidikan (Degree)", ['B.Pharm', 'BSc', 'BA', 'BCA', 'M.Tech', 'Others'])
+    city = st.text_input("Kota Tinggal (Contoh: Mumbai)")
+    profession = st.text_input("Pekerjaan (Contoh: Student)")
     
-    # Kumpulkan input data sesuai nama kolom training
+with col2:
+    st.subheader("Faktor Akademik & Kehidupan")
+    cgpa = st.number_input("Rata-rata IPK (CGPA)", min_value=2.0, max_value=10.0, value=7.5, step=0.1)
+    hours = st.number_input("Jam Belajar/Kerja per hari", min_value=0, max_value=20, value=5, step=1)
+    sleep = st.selectbox("Durasi Tidur", ['Less than 5 hours', '5-6 hours', '7-8 hours', 'More than 8 hours', 'Others'])
+    diet = st.selectbox("Kebiasaan Makan (Dietary Habits)", ['Healthy', 'Moderate', 'Unhealthy'])
+    
+with col3:
+    st.subheader("Faktor Risiko Mental")
+    academic = st.slider("Tekanan Akademik (1=Rendah, 5=Tinggi)", min_value=1, max_value=5, value=3, step=1)
+    satisfaction = st.slider("Kepuasan Belajar (1=Rendah, 5=Tinggi)", min_value=1, max_value=5, value=4, step=1)
+    financial = st.selectbox("Stres Keuangan (1-5)", ["1.0", "2.0", "3.0", "4.0", "5.0", '?'])
+    social = st.selectbox("Kelemahan Sosial (Social Weakness)", ['No', 'Yes'])
+    history = st.selectbox("Riwayat Mental Keluarga", ["No", "Yes"])
+    suicide = st.selectbox("Pernah terpikir Bunuh Diri?", ["No", "Yes"])
+
+
+# Tombol Prediksi di luar kolom agar posisinya tunggal
+st.markdown("---")
+if st.button("🔍 Prediksi Tingkat Risiko"):
+    
+    # Kumpulkan input data
     input_data = {
         "Gender": gender,
         "City": city,
@@ -142,8 +143,8 @@ if st.sidebar.button("🔍 Predict"):
 
     st.subheader("Hasil Prediksi")
     if prediction == 1:
-        st.error("⚠️ Risiko Tinggi (Depresi). Sebaiknya segera cari bantuan profesional.")
-        st.markdown("Tingkat Risiko: **DEPRESI** (1)")
+        st.error("⚠️ Risiko Tinggi (Depresi). Segera cari bantuan profesional.")
+        st.write("Tingkat Risiko: **DEPRESI** (1)")
     else:
         st.success("💚 Risiko Rendah (Normal). Pertahankan pola hidup seimbang.")
-        st.markdown("Tingkat Risiko: **TIDAK DEPRESI** (0)")
+        st.write("Tingkat Risiko: **TIDAK DEPRESI** (0)")
