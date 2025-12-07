@@ -109,7 +109,17 @@ with col3:
     st.subheader("Faktor Risiko Mental")
     academic = st.slider("Tekanan Akademik (1=Rendah, 5=Tinggi)", min_value=1, max_value=5, value=3, step=1)
     satisfaction = st.slider("Kepuasan Belajar (1=Rendah, 5=Tinggi)", min_value=1, max_value=5, value=4, step=1)
-    financial = st.selectbox("Stres Keuangan (1-5)", ["1.0", "2.0", "3.0", "4.0", "5.0", '?'])
+    
+    # --- PERUBAHAN STRES KEUANGAN DI SINI ---
+    financial = st.slider(
+        "Stres Keuangan (1=Rendah, 5=Tinggi)", 
+        min_value=1, 
+        max_value=5, 
+        value=3, 
+        step=1 # Hanya bilangan bulat
+    )
+    # --- AKHIR PERUBAHAN ---
+    
     social = st.selectbox("Kelemahan Sosial (Social Weakness)", ['No', 'Yes'])
     history = st.selectbox("Riwayat Mental Keluarga", ["No", "Yes"])
     suicide = st.selectbox("Pernah terpikir Bunuh Diri?", ["No", "Yes"])
@@ -132,7 +142,7 @@ if st.button("🔍 Prediksi Tingkat Risiko"):
         "Degree": degree,
         "Social Weakness": social,
         "Have you ever had suicidal thoughts ?": suicide,
-        "Financial Stress": financial,
+        "Financial Stress": str(financial) + ".0", # Format integer slider menjadi string "X.0" agar sesuai dengan mapper training
         "Family History of Mental Illness": history,
         "Academic Pressure": academic,
         "Study Satisfaction": satisfaction,
@@ -144,7 +154,7 @@ if st.button("🔍 Prediksi Tingkat Risiko"):
     st.subheader("Hasil Prediksi")
     if prediction == 1:
         st.error("⚠️ Risiko Tinggi (Depresi). Segera cari bantuan profesional.")
-        st.write("Tingkat Risiko: **DEPRESI** (1)")
+        st.write("Tingkat Risiko: DEPRESI (1)")
     else:
         st.success("💚 Risiko Rendah (Normal). Pertahankan pola hidup seimbang.")
-        st.write("Tingkat Risiko: **TIDAK DEPRESI** (0)")
+        st.write("Tingkat Risiko: TIDAK DEPRESI (0)")
